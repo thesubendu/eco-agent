@@ -64,7 +64,7 @@ async function startServer() {
       Analyze this data and provide strategic insights.`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview", // Using 1.5 flash as requested
+        model: "gemini-2.5-flash", // Using 1.5 flash as requested
         contents: [{ parts: [{ text: `Analyze the product: ${query}` }] }],
         config: {
           systemInstruction,
