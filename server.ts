@@ -5,6 +5,13 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Recreate __filename and __dirname in ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 dotenv.config();
 
 async function startServer() {
