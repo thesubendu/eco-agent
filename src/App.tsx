@@ -13,15 +13,42 @@ import {
   Loader2,
   MessageSquare,
   Globe,
-  CheckCircle2
+  CheckCircle2,
+  Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  Tooltip, 
+  ResponsiveContainer, 
+  Cell,
+  PieChart,
+  Pie,
+  Radar,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  CartesianGrid
+} from 'recharts';
 
 // Types for the research results
 interface ResearchResults {
   productName: string;
   summary: string;
   sentimentScore: string;
+  sentimentData: { label: string; value: number }[];
+  reasoningFlow: { step: string; detail: string; type: 'search' | 'analysis' | 'strategy' }[];
+  priceComparison: { product: string; price: number; source: string }[];
+  marketDashboard: {
+    demandScore: number;
+    competitionLevel: number;
+    growthPotential: number;
+  };
+  competitors: { name: string; marketShare: string; strength: string }[];
   topComplaints: string[];
   pricingInsights: string;
   strategicRecommendations: string[];
@@ -69,13 +96,20 @@ export default function App() {
 
       if (!response.ok) {
         const data = await response.json();
+        if (response.status === 401) {
+          throw new Error(data.error || 'Invalid API Key configuration.');
+        }
         throw new Error(data.error || 'Failed to fetch research data');
       }
 
       const data = await response.json();
       setResults(data);
     } catch (err: any) {
-      setError(err.message);
+      let errorMessage = err.message;
+      if (errorMessage.includes('503') || errorMessage.includes('high demand')) {
+        errorMessage = "The AI model is currently experiencing high demand. We've tried retrying, but the service is still unavailable. Please wait a minute and try again.";
+      }
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -275,7 +309,7 @@ export default function App() {
                   </div>
                 </div>
                 <h3 className="text-2xl font-bold text-white mt-8">Analyzing Market Intelligence...</h3>
-                <p className="text-slate-500 mt-2">Fetching live data from SerpApi and processing with Gemini 1.5 Flash</p>
+                <p className="text-slate-500 mt-2">Fetching live data from SerpApi and processing with Gemini 2.5 Flash</p>
                 <div className="mt-12 w-full max-w-md bg-white/5 h-1 rounded-full overflow-hidden">
                   <motion.div 
                     className="h-full bg-emerald-500"
@@ -301,7 +335,7 @@ export default function App() {
               <motion.div 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="space-y-8"
+                className="space-y-12"
               >
                 <div className="flex items-end justify-between border-b border-white/5 pb-8">
                   <div>
@@ -314,6 +348,45 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Agent Reasoning Flowchart */}
+                <section>
+                  <h4 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-8 flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-amber-500" /> Agent Reasoning Workflow
+                  </h4>
+                  <div className="relative">
+                    <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-white/10" />
+                    <div className="space-y-8">
+                      {results.reasoningFlow.map((step, i) => (
+                        <motion.div 
+                          key={i}
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.1 }}
+                          className="relative pl-20"
+                        >
+                          <div className={`absolute left-6 top-0 w-4 h-4 rounded-full border-2 border-[#0a0a0c] z-10 ${
+                            step.type === 'search' ? 'bg-blue-500' : 
+                            step.type === 'analysis' ? 'bg-purple-500' : 'bg-emerald-500'
+                          }`} />
+                          <div className="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-white/20 transition-all">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                                step.type === 'search' ? 'text-blue-400' : 
+                                step.type === 'analysis' ? 'text-purple-400' : 'text-emerald-400'
+                              }`}>
+                                {step.type}
+                              </span>
+                              <span className="text-slate-600">•</span>
+                              <h5 className="text-white font-bold">{step.step}</h5>
+                            </div>
+                            <p className="text-sm text-slate-400 leading-relaxed">{step.detail}</p>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+
                 <div className="grid grid-cols-3 gap-6">
                   {/* Summary Card */}
                   <div className="col-span-2 p-8 rounded-3xl bg-white/5 border border-white/10">
@@ -321,6 +394,98 @@ export default function App() {
                       <Globe className="w-4 h-4 text-emerald-500" /> Executive Summary
                     </h4>
                     <p className="text-slate-200 leading-relaxed text-lg font-medium">{results.summary}</p>
+                  </div>
+
+                  {/* Market Dashboard Radar */}
+                  <div className="p-8 rounded-3xl bg-white/5 border border-white/10">
+                    <h4 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <Target className="w-4 h-4 text-rose-500" /> Market Dashboard
+                    </h4>
+                    <div className="h-48 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RadarChart cx="50%" cy="50%" outerRadius="80%" data={[
+                          { subject: 'Demand', A: results.marketDashboard.demandScore, fullMark: 100 },
+                          { subject: 'Competition', A: results.marketDashboard.competitionLevel, fullMark: 100 },
+                          { subject: 'Growth', A: results.marketDashboard.growthPotential, fullMark: 100 },
+                        ]}>
+                          <PolarGrid stroke="rgba(255,255,255,0.1)" />
+                          <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 10, fontWeight: 'bold' }} />
+                          <Radar name="Market" dataKey="A" stroke="#10b981" fill="#10b981" fillOpacity={0.3} />
+                        </RadarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Price Comparison Chart */}
+                  <div className="col-span-3 p-8 rounded-3xl bg-white/5 border border-white/10">
+                    <h4 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-6 flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-emerald-500" /> Price Comparison Analysis
+                    </h4>
+                    <div className="h-64 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={results.priceComparison} layout="vertical">
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={false} />
+                          <XAxis type="number" hide />
+                          <YAxis dataKey="product" type="category" width={100} tick={{ fill: '#94a3b8', fontSize: 10 }} />
+                          <Tooltip 
+                            cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                            contentStyle={{ backgroundColor: '#16161a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
+                            itemStyle={{ color: '#10b981' }}
+                          />
+                          <Bar dataKey="price" fill="#10b981" radius={[0, 4, 4, 0]} barSize={20}>
+                            {results.priceComparison.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={index === 0 ? '#10b981' : '#334155'} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Sentiment Chart */}
+                  <div className="p-8 rounded-3xl bg-white/5 border border-white/10">
+                    <h4 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4 text-emerald-500" /> Sentiment Analysis
+                    </h4>
+                    <div className="h-40 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={results.sentimentData}>
+                          <XAxis dataKey="label" hide />
+                          <YAxis hide />
+                          <Tooltip 
+                            contentStyle={{ backgroundColor: '#16161a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
+                            itemStyle={{ color: '#10b981' }}
+                          />
+                          <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                            {results.sentimentData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={index === 0 ? '#10b981' : index === 1 ? '#64748b' : '#ef4444'} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Competitor List */}
+                  <div className="col-span-3 p-8 rounded-3xl bg-white/5 border border-white/10">
+                    <h4 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-6 flex items-center gap-2">
+                      <Users className="w-4 h-4 text-blue-500" /> Competitor Landscape
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {results.competitors.map((comp, i) => (
+                        <div key={i} className="p-5 rounded-2xl bg-black/40 border border-white/5 hover:border-blue-500/30 transition-all">
+                          <div className="flex justify-between items-start mb-2">
+                            <h5 className="text-white font-bold">{comp.name}</h5>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-bold">
+                              {comp.marketShare}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 leading-relaxed">
+                            <span className="text-slate-400 font-semibold">Strength:</span> {comp.strength}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Pricing Insights */}
