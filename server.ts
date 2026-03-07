@@ -69,8 +69,14 @@ const searchMemory = async (query: string, ai: any) => {
     // Generate Embedding for search
     const embedResponse = await ai.models.embedContent({
       model: "text-embedding-004",
-      content: { parts: [{ text: query }] }
+      content: query
     });
+    
+    if (!embedResponse?.embedding?.values) {
+      console.warn("Qdrant: No embedding values returned from Gemini");
+      return null;
+    }
+    
     const vector = embedResponse.embedding.values;
 
     // Search Qdrant
@@ -105,8 +111,14 @@ const saveToMemory = async (result: any, query: string, ai: any) => {
     // 2. Generate Embedding for the query
     const embedResponse = await ai.models.embedContent({
       model: "text-embedding-004",
-      content: { parts: [{ text: query }] }
+      content: query
     });
+    
+    if (!embedResponse?.embedding?.values) {
+      console.warn("Qdrant: No embedding values returned for save");
+      return;
+    }
+    
     const vector = embedResponse.embedding.values;
 
     // 3. Upsert into Qdrant
