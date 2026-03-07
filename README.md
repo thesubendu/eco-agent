@@ -27,6 +27,8 @@ EcomIntel is a high-fidelity research tool designed for e-commerce professionals
 1. **Environment Variables**:
    - `GEMINI_API_KEY`: Your Google Gemini API key.
    - `SERPAPI_KEY`: Your SerpApi key for live web search.
+   - `QDRANT_URL`: (Optional) Your Qdrant cluster URL.
+   - `QDRANT_API_KEY`: (Optional) Your Qdrant API key.
 2. **Installation**:
    ```bash
    npm install

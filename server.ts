@@ -5,11 +5,128 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from 'url';
+import { QdrantClient } from '@qdrant/js-client-rest';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 dotenv.config();
+
+// Qdrant Configuration (Lazy Initialization)
+let qdrantClient: QdrantClient | null = null;
+let isCollectionInitialized = false;
+const QDRANT_COLLECTION = "research_memory";
+
+const getQdrantClient = () => {
+  if (qdrantClient) return qdrantClient;
+  
+  const url = process.env.QDRANT_URL;
+  const apiKey = process.env.QDRANT_API_KEY;
+  
+  if (url && apiKey) {
+    try {
+      qdrantClient = new QdrantClient({ url, apiKey });
+      console.log("Qdrant Client Initialized");
+      return qdrantClient;
+    } catch (err) {
+      console.error("Failed to initialize Qdrant client:", err);
+      return null;
+    }
+  }
+  return null;
+};
+
+// Ensure collection exists (Safe & Efficient)
+const ensureCollection = async (client: QdrantClient) => {
+  if (isCollectionInitialized) return true;
+  try {
+    const collections = await client.getCollections();
+    const exists = collections.collections.some(c => c.name === QDRANT_COLLECTION);
+    
+    if (!exists) {
+      await client.createCollection(QDRANT_COLLECTION, {
+        vectors: { size: 768, distance: 'Cosine' }
+      });
+      console.log(`Qdrant collection '${QDRANT_COLLECTION}' created.`);
+    }
+    isCollectionInitialized = true;
+    return true;
+  } catch (err) {
+    console.error("Failed to ensure Qdrant collection:", err);
+    return false;
+  }
+};
+
+// Helper to search memory (Effective RAG)
+const searchMemory = async (query: string, ai: any) => {
+  const client = getQdrantClient();
+  if (!client) return null;
+
+  try {
+    if (!(await ensureCollection(client))) return null;
+
+    // Generate Embedding for search
+    const embedResponse = await ai.models.embedContent({
+      model: "text-embedding-004",
+      content: { parts: [{ text: query }] }
+    });
+    const vector = embedResponse.embedding.values;
+
+    // Search Qdrant
+    const searchResults = await client.search(QDRANT_COLLECTION, {
+      vector,
+      limit: 3,
+      with_payload: true
+    });
+
+    if (searchResults.length > 0) {
+      return searchResults.map(res => ({
+        query: res.payload?.query,
+        productName: res.payload?.productName,
+        summary: res.payload?.summary,
+        score: res.score
+      }));
+    }
+  } catch (err) {
+    console.error("Qdrant search failed:", err);
+  }
+  return null;
+};
+
+// Helper to save research to Qdrant (Error-Proof)
+const saveToMemory = async (result: any, query: string, ai: any) => {
+  const client = getQdrantClient();
+  if (!client) return;
+
+  try {
+    if (!(await ensureCollection(client))) return;
+
+    // 2. Generate Embedding for the query
+    const embedResponse = await ai.models.embedContent({
+      model: "text-embedding-004",
+      content: { parts: [{ text: query }] }
+    });
+    const vector = embedResponse.embedding.values;
+
+    // 3. Upsert into Qdrant
+    await client.upsert(QDRANT_COLLECTION, {
+      points: [{
+        id: crypto.randomUUID(),
+        vector,
+        payload: {
+          query,
+          productName: result.productName,
+          summary: result.summary,
+          timestamp: new Date().toISOString()
+        }
+      }]
+    });
+    console.log("Research saved to Qdrant memory");
+  } catch (err) {
+    console.error("Qdrant save failed:", err);
+  }
+};
 
 async function startServer() {
   const app = express();
@@ -58,6 +175,13 @@ async function startServer() {
       }
 
       const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+
+      // Step 3: Search Memory for Context (RAG)
+      const pastResearch = await searchMemory(query, ai);
+      const memoryContext = pastResearch 
+        ? `\n\nHere is relevant historical context from past research:\n${JSON.stringify(pastResearch)}`
+        : "";
+
       const systemInstruction = `You are an E-commerce Research Agent. The user wants to analyze a product. 
       Their business goal is: ${goal}. 
       Focus on these KPIs: ${kpis.join(", ")}. 
@@ -67,6 +191,7 @@ async function startServer() {
       
       Here is the live web search data for the product:
       ${JSON.stringify(organicResults)}
+      ${memoryContext}
       
       Analyze this data and provide strategic insights.
       
@@ -173,6 +298,10 @@ async function startServer() {
       if (!response) throw new Error("Failed to get response from Gemini after retries");
 
       const result = JSON.parse(response.text || "{}");
+      
+      // Save to Qdrant Memory (Async, don't wait for it)
+      saveToMemory(result, query, ai).catch(err => console.error("Memory save failed:", err));
+
       res.json(result);
 
     } catch (error: any) {
